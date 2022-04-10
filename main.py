@@ -1,12 +1,14 @@
 import os
+import sys
 import datetime
 import logging
 import traceback
 from contextlib import suppress
 import discord
-from dotenv import load_dotenv
 import youtube_dl
 import asyncio
+import db
+import constants
 
 VERSION = '0.1.0'
 NAME = 'Discord Bot'
@@ -33,9 +35,20 @@ stream.setFormatter(fileformat)
 log.addHandler(stream)
 # End of logger setup
 
-load_dotenv()
-TOKEN = os.getenv('DISCORD_TOKEN')
-client = discord.Client()
+log.info('=============================')
+log.info(f'{NAME} v{VERSION} start')
+
+try:
+  params = db.init('params')
+  serverdb = db.init('serverdb')
+
+  TOKEN = params['discord_token']
+  if not TOKEN:
+    log.error('Discord token is empty')
+    sys.exit(2)
+  client = discord.Client()
+except Exception as e:
+  log.error((traceback.format_exc()))
 
 help_message = '''Bot commands
 !p, !з - play/pause
@@ -143,6 +156,7 @@ async def toggle_playback(message):
 
 @client.event
 async def on_message(message):
+  check_serverdb(message.guild.id)
   if message.author == client.user:
       return
 
@@ -164,7 +178,13 @@ async def on_message(message):
 async def on_error(event, *args, **kwargs):
   log.error((traceback.format_exc()))
 
+def check_serverdb(server_id):
+  if server_id not in serverdb:
+    serverdb.update({server_id:constants.get_default_server()})
+    db.write('serverdb', serverdb)
+
 if __name__ == '__main__':
-  log.info('=============================')
-  log.info(f'{NAME} v{VERSION} start')
-  client.run(TOKEN)
+  try:
+    client.run(TOKEN)
+  except Exception as e:
+    log.error((traceback.format_exc()))

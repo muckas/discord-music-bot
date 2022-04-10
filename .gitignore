@@ -2,7 +2,7 @@
 /venv
 /backup
 /db/data
-users.json
+serverdb.json
 params.json
 whitelist.json
 *.swp
