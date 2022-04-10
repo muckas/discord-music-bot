@@ -1,6 +1,7 @@
 import os
 import datetime
 import logging
+import traceback
 from contextlib import suppress
 import discord
 from dotenv import load_dotenv
@@ -49,6 +50,10 @@ async def on_message(message):
   else:
     response = message.content
     await message.channel.send(response)
+
+@client.event
+async def on_error(event, *args, **kwargs):
+  log.error((traceback.format_exc()))
 
 if __name__ == '__main__':
   log.info('=============================')
