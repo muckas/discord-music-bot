@@ -53,7 +53,11 @@ except Exception as e:
 help_message = '''Bot commands
 !p, !з - play/pause
 !s, !ы, !skip - skip current song
+!q, !й, !queue - show queue
+!c, !с, !clear - clear queue
 !d, !в, !disconnect - disconnects bot from a voice channel
+!music-reg - register channel for music
+!music-unreg - unregister channel for music
 '''
 
 youtube_dl.utils.bug_reports_message = lambda: ''
@@ -100,63 +104,148 @@ async def on_ready():
 
 @client.event
 async def join(message):
-  voice_client = message.guild.voice_client
-  if voice_client and voice_client.is_connected():
-    return
-  if message.author.voice:
-    channel = message.author.voice.channel
-    await channel.connect()
-  else:
-    response = f'{message.author.name} is not connected to a voice channel'
-    await message.channel.send(response)
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if in_music_channel(server_id, channel_id):
+    voice_client = message.guild.voice_client
+    if voice_client and voice_client.is_connected():
+      return
+    if message.author.voice:
+      channel = message.author.voice.channel
+      await channel.connect()
+    else:
+      response = f'{message.author.name} is not connected to a voice channel'
+      await message.channel.send(response)
 
 @client.event
 async def disconnect(message):
-  voice_client = message.guild.voice_client
-  if voice_client and voice_client.is_connected():
-    await voice_client.disconnect()
-  else:
-    response = f'{client.user.name} is not connected to a voice channel'
-    await message.channel.send(response)
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if in_music_channel(server_id, channel_id):
+    voice_client = message.guild.voice_client
+    if voice_client and voice_client.is_connected():
+      await voice_client.disconnect()
+    else:
+      response = f'{client.user.name} is not connected to a voice channel'
+      await message.channel.send(response)
+
+def after_song(message):
+  server_id = str(message.guild.id)
+  queue = serverdb[server_id]['music_queue']
+  try:
+    if len(queue) > 1:
+      next_url = serverdb[server_id]['music_queue'][1]['url']
+      voice_client = message.guild.voice_client
+      voice_client.play(discord.FFmpegPCMAudio(source=next_url), after=lambda e: after_song(message))
+      serverdb[server_id]['music_queue'].pop(0)
+      db.write('serverdb', serverdb)
+    else:
+      next_url, next_title = serverdb[server_id]['music_queue'].pop(0)
+      db.write('serverdb', serverdb)
+  except IndexError:
+    pass
 
 @client.event
 async def play(message):
-  await join(message)
-  ffmpeg_exec_name = 'ffmpeg'
-  url = message.content
-  server = message.guild
-  voice_client = server.voice_client
-  if voice_client and voice_client.is_connected():
-    url, title = await YTDLSource.from_url(url)
-    voice_client.play(discord.FFmpegPCMAudio(executable=ffmpeg_exec_name, source=url))
-    await message.channel.send(f'**Now playing:** {title}')
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  queue = serverdb[server_id]['music_queue']
+  if in_music_channel(server_id, channel_id):
+    search = message.content
+    url, title = await YTDLSource.from_url(search)
+    serverdb[server_id]['music_queue'].append({'url':url, 'title':title})
+    db.write('serverdb', serverdb)
+    voice_client = message.guild.voice_client
+    if voice_client and voice_client.is_playing():
+      await message.channel.send(f'**Added to queue:** {title}')
+    else:
+      await join(message)
+      voice_client = message.guild.voice_client
+      if voice_client and voice_client.is_connected():
+        voice_client.play(discord.FFmpegPCMAudio(source=url), after=lambda e:after_song(message))
+        await message.channel.send(f'**Now playing:** {title}')
 
 @client.event
 async def skip(message):
-  server = message.guild
-  voice_client = server.voice_client
-  if voice_client and voice_client.is_playing():
-    voice_client.stop()
-  else:
-    response = f'Nothing is playing right now'
-    await message.channel.send(response)
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if in_music_channel(server_id, channel_id):
+    server = message.guild
+    voice_client = server.voice_client
+    if voice_client and voice_client.is_playing():
+      voice_client.stop()
+      after_song(message)
+    else:
+      response = f'Nothing is playing right now'
+      await message.channel.send(response)
 
 @client.event
 async def toggle_playback(message):
-  server = message.guild
-  voice_client = server.voice_client
-  if voice_client:
-    if voice_client.is_playing():
-      voice_client.pause()
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if in_music_channel(server_id, channel_id):
+    server = message.guild
+    voice_client = server.voice_client
+    if voice_client:
+      if voice_client.is_playing():
+        voice_client.pause()
+      elif voice_client.is_paused():
+        voice_client.resume()
+      else:
+        response = f'Nothing is playing right now'
+        await message.channel.send(response)
     else:
-      voice_client.resume()
+      response = f'Nothing is playing right now'
+      await message.channel.send(response)
+
+@client.event
+async def show_queue(message):
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  queue = serverdb[server_id]['music_queue']
+  if queue:
+    response = f'***Current queue***'
+    response += f'\n**Now playing**: {queue[0]["title"]}'
+    n = 0
+    for song in queue:
+      if n > 0:
+        response += f'\n{n}: {song["title"]}'
+      n += 1
   else:
-    response = f'Nothing is playing right now'
-    await message.channel.send(response)
+    response = f'Queue is empty'
+  await message.channel.send(response)
+
+@client.event
+async def clear_queue(message):
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  serverdb[server_id]['music_queue'] = []
+  db.write('serverdb', serverdb)
+  response = f'Queue has been cleared'
+  await message.channel.send(response)
+
+@client.event
+async def music_register(message):
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  serverdb[server_id]['music_channel'] = channel_id
+  db.write('serverdb', serverdb)
+  response = f'Channel "{message.channel.name}" is now a music channel'
+  await message.channel.send(response)
+
+@client.event
+async def music_unregister(message):
+  server_id = str(message.guild.id)
+  serverdb[server_id]['music_channel'] = None
+  db.write('serverdb', serverdb)
+  response = f'Channel "{message.channel.name}" is no longer a music channel'
+  await message.channel.send(response)
 
 @client.event
 async def on_message(message):
-  check_serverdb(message.guild.id)
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  check_serverdb(server_id)
   if message.author == client.user:
       return
 
@@ -171,17 +260,29 @@ async def on_message(message):
     await skip(message)
   elif message.content.lower() in ['!p', '!з']:
     await toggle_playback(message)
+  elif message.content.lower() in ['!q', '!й', '!queue']:
+    await show_queue(message)
+  elif message.content.lower() in ['!c', '!с', '!clear']:
+    await clear_queue(message)
+  elif message.content.lower() == '!music-reg':
+    await music_register(message)
+  elif message.content.lower() == '!music-unreg':
+    await music_unregister(message)
   else:
-    await play(message)
+    if in_music_channel(server_id, channel_id):
+      await play(message)
 
 @client.event
 async def on_error(event, *args, **kwargs):
   log.error((traceback.format_exc()))
 
 def check_serverdb(server_id):
-  if server_id not in serverdb:
-    serverdb.update({server_id:constants.get_default_server()})
+  if str(server_id) not in serverdb:
+    serverdb.update({str(server_id):constants.get_default_server()})
     db.write('serverdb', serverdb)
+
+def in_music_channel(server_id, channel_id):
+  return str(channel_id) == serverdb[str(server_id)]['music_channel']
 
 if __name__ == '__main__':
   try:
