@@ -40,13 +40,32 @@ async def on_ready():
   log.info(f'{client.user.name} has connected to Discord!')
 
 @client.event
+async def join(message):
+  if not message.author.voice:
+    response = f'{message.author.name} is not connected to a voice channel'
+    await message.channel.send(response)
+  else:
+    channel = message.author.voice.channel
+    await channel.connect()
+
+@client.event
+async def disconnect(message):
+  voice_client = message.guild.voice_client
+  if voice_client and voice_client.is_connected():
+    await voice_client.disconnect()
+  else:
+    response = f'{client.user.name} is not connected to a voice channel'
+    await message.channel.send(response)
+
+@client.event
 async def on_message(message):
   if message.author == client.user:
       return
 
-  if message.content == 'Test':
-    response = 'Test complete'
-    await message.channel.send(response)
+  if message.content.lower() in ['!j', '!join',]:
+    await join(message)
+  elif message.content.lower() in ['!d', '!disconnect',]:
+    await disconnect(message)
   else:
     response = message.content
     await message.channel.send(response)
