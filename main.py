@@ -35,6 +35,11 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 client = discord.Client()
 
+help_message = '''Bot commands
+!j, !о, !join - join a voice channel
+!d, !в, !disconnect - disconnect from a voice channel
+'''
+
 @client.event
 async def on_ready():
   log.info(f'{client.user.name} has connected to Discord!')
@@ -62,13 +67,13 @@ async def on_message(message):
   if message.author == client.user:
       return
 
-  if message.content.lower() in ['!j', '!join',]:
-    await join(message)
-  elif message.content.lower() in ['!d', '!disconnect',]:
-    await disconnect(message)
-  else:
-    response = message.content
+  if message.content.lower() in ['!h', '!help']:
+    response = help_message
     await message.channel.send(response)
+  elif message.content.lower() in ['!j', '!о', '!join']:
+    await join(message)
+  elif message.content.lower() in ['!d', '!в','!disconnect']:
+    await disconnect(message)
 
 @client.event
 async def on_error(event, *args, **kwargs):
