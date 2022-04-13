@@ -147,51 +147,66 @@ async def disconnect(message):
 def after_song(message):
   server_id = str(message.guild.id)
   queue = serverdb[server_id]['music_queue']
-  try:
-    if len(queue) > 1:
-      next_url = serverdb[server_id]['music_queue'][1]['url']
-      voice_client = message.guild.voice_client
+  if len(queue) > 1:
+    next_url = serverdb[server_id]['music_queue'][1]['url']
+    voice_client = message.guild.voice_client
+    if voice_client:
       voice_client.play(discord.FFmpegPCMAudio(source=next_url), after=lambda e: after_song(message))
       serverdb[server_id]['music_queue'].pop(0)
       db.write('serverdb', serverdb)
-    else:
-      next_url, next_title = serverdb[server_id]['music_queue'].pop(0)
-      db.write('serverdb', serverdb)
-  except IndexError:
-    pass
+
+@client.event
+async def add_to_queue(message):
+  server_id = str(message.guild.id)
+  queue = serverdb[server_id]['music_queue']
+  search = message.content
+  url, title = await YTDLSource.from_url(search)
+  serverdb[server_id]['music_queue'].append({'url':url, 'title':title})
+  db.write('serverdb', serverdb)
+  await message.channel.send(f'**Added to queue:** {title}')
+
+@client.event
+async def start_playing(message):
+  server_id = str(message.guild.id)
+  queue = serverdb[server_id]['music_queue']
+  if queue:
+    url = queue[0]['url']
+    title = queue[0]['title']
+    voice_client = message.guild.voice_client
+    voice_client.play(discord.FFmpegPCMAudio(source=url), after=lambda e: after_song(message))
+    await message.channel.send(f'**Now playing:** {title}')
+  else:
+    await message.channel.send(f'**Queue is empty**')
 
 @client.event
 async def play(message):
   server_id = str(message.guild.id)
   channel_id = str(message.channel.id)
-  queue = serverdb[server_id]['music_queue']
   if in_music_channel(server_id, channel_id):
-    search = message.content
-    url, title = await YTDLSource.from_url(search)
-    serverdb[server_id]['music_queue'].append({'url':url, 'title':title})
-    db.write('serverdb', serverdb)
-    voice_client = message.guild.voice_client
-    if voice_client and voice_client.is_playing():
-      await message.channel.send(f'**Added to queue:** {title}')
-    else:
+    await add_to_queue(message)
+    queue = serverdb[server_id]['music_queue']
+    if len(queue) == 1:
       await join(message)
-      voice_client = message.guild.voice_client
-      if voice_client and voice_client.is_connected():
-        voice_client.play(discord.FFmpegPCMAudio(source=url), after=lambda e:after_song(message))
-        await message.channel.send(f'**Now playing:** {title}')
+      await start_playing(message)
 
 @client.event
 async def skip(message):
   server_id = str(message.guild.id)
   channel_id = str(message.channel.id)
   if in_music_channel(server_id, channel_id):
-    server = message.guild
-    voice_client = server.voice_client
-    if voice_client and voice_client.is_playing():
-      voice_client.stop()
-      after_song(message)
+    queue = serverdb[server_id]['music_queue']
+    if queue:
+      current_song_title = queue[0]['title']
+      serverdb[server_id]['music_queue'].pop(0)
+      db.write('serverdb', serverdb)
+      voice_client = message.guild.voice_client
+      response = f'**Skipped**: {current_song_title}'
+      await message.channel.send(response)
+      if voice_client:
+        voice_client.stop()
+        await start_playing(message)
     else:
-      response = f'Nothing is playing right now'
+      response = f'Queue is empty'
       await message.channel.send(response)
 
 @client.event
@@ -204,14 +219,15 @@ async def toggle_playback(message):
     if voice_client:
       if voice_client.is_playing():
         voice_client.pause()
+        await message.channel.send('Playback paused')
       elif voice_client.is_paused():
         voice_client.resume()
+        await message.channel.send('Playback resumed')
       else:
-        response = f'Nothing is playing right now'
-        await message.channel.send(response)
+        await start_playing(message)
     else:
-      response = f'Nothing is playing right now'
-      await message.channel.send(response)
+      await join(message)
+      await start_playing(message)
 
 @client.event
 async def show_queue(message):
