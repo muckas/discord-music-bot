@@ -10,7 +10,7 @@ import asyncio
 import db
 import constants
 
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 NAME = 'Discord Bot'
 
 # Logger setup
@@ -51,6 +51,7 @@ except Exception as e:
   log.error((traceback.format_exc()))
 
 help_message = '''Bot commands
+Paste a link or a name of the song in chat to add it to queue
 !p, !з - play/pause
 !s, !ы, !skip - skip current song
 !q, !й, !queue - show queue
@@ -202,27 +203,29 @@ async def toggle_playback(message):
 async def show_queue(message):
   server_id = str(message.guild.id)
   channel_id = str(message.channel.id)
-  queue = serverdb[server_id]['music_queue']
-  if queue:
-    response = f'***Current queue***'
-    response += f'\n**Now playing**: {queue[0]["title"]}'
-    n = 0
-    for song in queue:
-      if n > 0:
-        response += f'\n{n}: {song["title"]}'
-      n += 1
-  else:
-    response = f'Queue is empty'
-  await message.channel.send(response)
+  if in_music_channel(server_id, channel_id):
+    queue = serverdb[server_id]['music_queue']
+    if queue:
+      response = f'***Current queue***'
+      response += f'\n**Now playing**: {queue[0]["title"]}'
+      n = 0
+      for song in queue:
+        if n > 0:
+          response += f'\n{n}: {song["title"]}'
+        n += 1
+    else:
+      response = f'Queue is empty'
+    await message.channel.send(response)
 
 @client.event
 async def clear_queue(message):
   server_id = str(message.guild.id)
   channel_id = str(message.channel.id)
-  serverdb[server_id]['music_queue'] = []
-  db.write('serverdb', serverdb)
-  response = f'Queue has been cleared'
-  await message.channel.send(response)
+  if in_music_channel(server_id, channel_id):
+    serverdb[server_id]['music_queue'] = []
+    db.write('serverdb', serverdb)
+    response = f'Queue has been cleared'
+    await message.channel.send(response)
 
 @client.event
 async def music_register(message):
@@ -242,33 +245,43 @@ async def music_unregister(message):
   await message.channel.send(response)
 
 @client.event
+async def command_handler(prefix, message):
+  if message.content[:1] == prefix:
+    command = message.content[1:].lower()
+    if command in ['h', 'help']:
+      response = help_message
+      await message.channel.send(response)
+    # elif message.content.lower() in ['!j', '!о', '!join']:
+    #   await join(message)
+    elif command in ['d', 'в','disconnect']:
+      await disconnect(message)
+    elif command in ['s', 'ы', 'skip']:
+      await skip(message)
+    elif command in ['p', 'з']:
+      await toggle_playback(message)
+    elif command in ['q', 'й', 'queue']:
+      await show_queue(message)
+    elif command in ['c', 'с', 'clear']:
+      await clear_queue(message)
+    elif command == 'music-reg':
+      await music_register(message)
+    elif command == 'music-unreg':
+      await music_unregister(message)
+    else:
+      response = f'Unknown command "{message.content}"\nSee {prefix}h for help'
+      await message.channel.send(response)
+    return True
+  else:
+    return False
+
+@client.event
 async def on_message(message):
   server_id = str(message.guild.id)
   channel_id = str(message.channel.id)
   check_serverdb(server_id)
   if message.author == client.user:
       return
-
-  if message.content.lower() in ['!h', '!help']:
-    response = help_message
-    await message.channel.send(response)
-  # elif message.content.lower() in ['!j', '!о', '!join']:
-  #   await join(message)
-  elif message.content.lower() in ['!d', '!в','!disconnect']:
-    await disconnect(message)
-  elif message.content.lower() in ['!s', '!ы', '!skip']:
-    await skip(message)
-  elif message.content.lower() in ['!p', '!з']:
-    await toggle_playback(message)
-  elif message.content.lower() in ['!q', '!й', '!queue']:
-    await show_queue(message)
-  elif message.content.lower() in ['!c', '!с', '!clear']:
-    await clear_queue(message)
-  elif message.content.lower() == '!music-reg':
-    await music_register(message)
-  elif message.content.lower() == '!music-unreg':
-    await music_unregister(message)
-  else:
+  if not await command_handler('!', message):
     if in_music_channel(server_id, channel_id):
       await play(message)
 
