@@ -295,6 +295,16 @@ async def remove(message, track_number):
     except ValueError:
       await message.channel.send(f'**Wrong track number: {track_number}**')
 
+async def undo(message):
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if in_music_channel(server_id, channel_id):
+    queue = serverdb[server_id]['music_queue']
+    if queue and len(queue) > 1:
+      await remove_from_queue(message, len(queue)-1)
+    else:
+      await message.channel.send('Queue is empty')
+
 @client.event
 async def music_register(message):
   server_id = str(message.guild.id)
@@ -341,6 +351,8 @@ async def command_handler(prefix, message):
       await clear_queue(message)
     elif command in ['r', 'к', 'remove']:
       await remove(message, argument)
+    elif command in ['u', 'г', 'undo']:
+      await undo(message)
     elif command == 'music-reg':
       await music_register(message)
     elif command == 'music-unreg':
