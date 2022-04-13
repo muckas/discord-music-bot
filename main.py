@@ -109,6 +109,8 @@ Registered music channel: *{music_channel_name}*
 !s, !ы, !skip - skip current song
 !q, !й, !queue - show queue
 !c, !с, !clear - clear queue
+!r, !к, !remove <track_number> - remove track from queue
+!u, !г, !undo - remove last track from queue
 !d, !в, !disconnect - disconnects bot from a voice channel
 !music-reg - register channel for music
 !music-unreg - unregister channel for music
@@ -167,7 +169,27 @@ async def add_to_queue(message):
     duration = str(datetime.timedelta(seconds=duration))
   serverdb[server_id]['music_queue'].append({'url':url, 'title':title, 'duration':duration})
   db.write('serverdb', serverdb)
-  await message.channel.send(f'**Added to queue:** {title} | ***{duration}***')
+  track_number = len(queue) - 1
+  await message.channel.send(f'**Added to queue:** ***{track_number}*** {title} | ***{duration}***')
+
+@client.event
+async def remove_from_queue(message, track_number):
+  server_id = str(message.guild.id)
+  queue = serverdb[server_id]['music_queue']
+  if queue:
+    if track_number > 0:
+      try:
+        track = serverdb[server_id]['music_queue'].pop(track_number)
+        db.write('serverdb', serverdb)
+        await message.channel.send(
+            f'**Removed from queue:** ***{track_number}*** {track["title"]} | ***{track["duration"]}***'
+            )
+      except IndexError:
+        await message.channel.send(f'**Wrong track number: {track_number}**')
+    else:
+      await message.channel.send(f'**Track number can\'t be "{track_number}"**')
+  else:
+    await message.channel.send(f'**Queue is empty**')
 
 @client.event
 async def start_playing(message):
@@ -263,6 +285,17 @@ async def clear_queue(message):
     await message.channel.send(response)
 
 @client.event
+async def remove(message, track_number):
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if in_music_channel(server_id, channel_id):
+    try:
+      track_number = int(track_number)
+      await remove_from_queue(message, track_number)
+    except ValueError:
+      await message.channel.send(f'**Wrong track number: {track_number}**')
+
+@client.event
 async def music_register(message):
   server_id = str(message.guild.id)
   channel_id = str(message.channel.id)
@@ -287,7 +320,11 @@ async def music_unregister(message):
 @client.event
 async def command_handler(prefix, message):
   if message.content[:1] == prefix:
-    command = message.content[1:].lower()
+    try:
+      command, argument = message.content[1:].lower().split(' ')
+    except ValueError:
+      command = message.content[1:].lower()
+      argument = None
     if command in ['h', 'help']:
       await get_help(message)
     # elif message.content.lower() in ['!j', '!о', '!join']:
@@ -302,12 +339,14 @@ async def command_handler(prefix, message):
       await show_queue(message)
     elif command in ['c', 'с', 'clear']:
       await clear_queue(message)
+    elif command in ['r', 'к', 'remove']:
+      await remove(message, argument)
     elif command == 'music-reg':
       await music_register(message)
     elif command == 'music-unreg':
       await music_unregister(message)
     else:
-      response = f'Unknown command "{message.content}"\nSee {prefix}h for help'
+      response = f'Unknown command "{command}"\nSee {prefix}h for help'
       await message.channel.send(response)
     return True
   else:
