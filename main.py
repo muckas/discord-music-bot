@@ -50,17 +50,6 @@ try:
 except Exception as e:
   log.error((traceback.format_exc()))
 
-help_message = '''Bot commands
-Paste a link or a name of the song in chat to add it to queue
-!p, !з - play/pause
-!s, !ы, !skip - skip current song
-!q, !й, !queue - show queue
-!c, !с, !clear - clear queue
-!d, !в, !disconnect - disconnects bot from a voice channel
-!music-reg - register channel for music
-!music-unreg - unregister channel for music
-'''
-
 youtube_dl.utils.bug_reports_message = lambda: ''
 
 ytdl_format_options = {
@@ -102,6 +91,31 @@ class YTDLSource(discord.PCMVolumeTransformer):
 @client.event
 async def on_ready():
   log.info(f'{client.user.name} has connected to Discord!')
+
+@client.event
+async def get_help(message):
+  bot_name = client.user.name
+  server_id = str(message.guild.id)
+  music_channel_id = serverdb[server_id]['music_channel']
+  if music_channel_id:
+    music_channel_name = client.get_channel(int(music_channel_id))
+  else:
+    music_channel_name = 'Not registered'
+  help_message = f'''**{bot_name} v{VERSION}**
+Paste a link or a name of the song in music channel to add it to queue
+Registered music channel: *{music_channel_name}*
+***Bot commands***
+!p, !з - play/pause
+!s, !ы, !skip - skip current song
+!q, !й, !queue - show queue
+!c, !с, !clear - clear queue
+!d, !в, !disconnect - disconnects bot from a voice channel
+!music-reg - register channel for music
+!music-unreg - unregister channel for music
+'''
+
+  response = help_message
+  await message.channel.send(response)
 
 @client.event
 async def join(message):
@@ -239,9 +253,14 @@ async def music_register(message):
 @client.event
 async def music_unregister(message):
   server_id = str(message.guild.id)
-  serverdb[server_id]['music_channel'] = None
-  db.write('serverdb', serverdb)
-  response = f'Channel "{message.channel.name}" is no longer a music channel'
+  current_channel_id = serverdb[server_id]['music_channel']
+  if current_channel_id:
+    current_channel_name = client.get_channel(int(current_channel_id))
+    serverdb[server_id]['music_channel'] = None
+    db.write('serverdb', serverdb)
+    response = f'Channel "{current_channel_name}" is no longer a music channel'
+  else:
+    response = f'Music channel is not registered'
   await message.channel.send(response)
 
 @client.event
@@ -249,8 +268,7 @@ async def command_handler(prefix, message):
   if message.content[:1] == prefix:
     command = message.content[1:].lower()
     if command in ['h', 'help']:
-      response = help_message
-      await message.channel.send(response)
+      await get_help(message)
     # elif message.content.lower() in ['!j', '!о', '!join']:
     #   await join(message)
     elif command in ['d', 'в','disconnect']:
