@@ -86,7 +86,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
       # take first item from a playlist
       data = data['entries'][0]
     filename = data['title'] if stream else ytdl.prepare_filename(data)
-    return data['url'], data['title']
+    return data['url'], data['title'], data['duration'], data['is_live']
 
 @client.event
 async def on_ready():
@@ -160,10 +160,14 @@ async def add_to_queue(message):
   server_id = str(message.guild.id)
   queue = serverdb[server_id]['music_queue']
   search = message.content
-  url, title = await YTDLSource.from_url(search)
-  serverdb[server_id]['music_queue'].append({'url':url, 'title':title})
+  url, title, duration, is_live = await YTDLSource.from_url(search)
+  if is_live:
+    duration = 'Livestream'
+  else:
+    duration = str(datetime.timedelta(seconds=duration))
+  serverdb[server_id]['music_queue'].append({'url':url, 'title':title, 'duration':duration})
   db.write('serverdb', serverdb)
-  await message.channel.send(f'**Added to queue:** {title}')
+  await message.channel.send(f'**Added to queue:** {title} | ***{duration}***')
 
 @client.event
 async def start_playing(message):
@@ -172,9 +176,10 @@ async def start_playing(message):
   if queue:
     url = queue[0]['url']
     title = queue[0]['title']
+    duration = queue[0]['duration']
     voice_client = message.guild.voice_client
     voice_client.play(discord.FFmpegPCMAudio(source=url), after=lambda e: after_song(message))
-    await message.channel.send(f'**Now playing:** {title}')
+    await message.channel.send(f'**Now playing:** {title} | ***{duration}***')
   else:
     await message.channel.send(f'**Queue is empty**')
 
@@ -237,11 +242,11 @@ async def show_queue(message):
     queue = serverdb[server_id]['music_queue']
     if queue:
       response = f'***Current queue***'
-      response += f'\n**Now playing**: {queue[0]["title"]}'
+      response += f'\n**Now playing**: {queue[0]["title"]} | ***{queue[0]["duration"]}***'
       n = 0
       for song in queue:
         if n > 0:
-          response += f'\n{n}: {song["title"]}'
+          response += f'\n***{n}***: {song["title"]} | ***{song["duration"]}***'
         n += 1
     else:
       response = f'Queue is empty'
