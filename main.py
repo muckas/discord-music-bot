@@ -156,6 +156,9 @@ def after_song(message):
       voice_client.play(discord.FFmpegPCMAudio(source=next_url), after=lambda e: after_song(message))
       serverdb[server_id]['music_queue'].pop(0)
       db.write('serverdb', serverdb)
+  elif len(queue) == 1:
+    serverdb[server_id]['music_queue'].pop(0)
+    db.write('serverdb', serverdb)
 
 @client.event
 async def add_to_queue(message):
@@ -224,14 +227,21 @@ async def skip(message):
     queue = serverdb[server_id]['music_queue']
     if queue:
       current_song_title = queue[0]['title']
-      serverdb[server_id]['music_queue'].pop(0)
-      db.write('serverdb', serverdb)
-      voice_client = message.guild.voice_client
       response = f'**Skipped**: {current_song_title}'
-      await message.channel.send(response)
+      try:
+        next_song_title = queue[1]['title']
+        next_song_duration = queue[1]['duration']
+        next_response = f'**Now playing:** {next_song_title} | ***{next_song_duration}***'
+      except IndexError:
+        next_response = f'**Queue is empty**'
+      voice_client = message.guild.voice_client
       if voice_client:
-        voice_client.stop()
-        await start_playing(message)
+        voice_client.stop() # executes after_song(message)
+      else:
+        serverdb[server_id]['music_queue'].pop(0)
+        db.write('serverdb', serverdb)
+      await message.channel.send(response)
+      await message.channel.send(next_response)
     else:
       response = f'Queue is empty'
       await message.channel.send(response)
