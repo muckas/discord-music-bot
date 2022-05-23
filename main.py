@@ -53,6 +53,7 @@ except Exception as e:
 youtube_dl.utils.bug_reports_message = lambda: ''
 
 ytdl_format_options = {
+  'logger': log,
   'format': 'bestaudio/best',
   'restrictfilenames': True,
   'noplaylist': True,
