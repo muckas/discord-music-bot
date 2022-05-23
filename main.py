@@ -10,7 +10,7 @@ import asyncio
 import db
 import constants
 
-VERSION = '0.2.0'
+VERSION = '0.3.1'
 NAME = 'Discord Bot'
 
 # Logger setup
