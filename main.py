@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import datetime
 import logging
 import traceback
@@ -109,6 +110,7 @@ Paste a link or a name of the song in music channel to add it to queue
 Registered music channel: *{music_channel_name}*
 ***Bot commands***
 !p, !з - play/pause
+!seek, !ыуул <HH:MM:SS> - skip to specified time
 !s, !ы, !skip - skip current song
 !q, !й, !queue - show queue
 !c, !с, !clear - clear queue
@@ -198,7 +200,7 @@ async def remove_from_queue(message, track_number):
     await message.channel.send(f'**Queue is empty**')
 
 @client.event
-async def start_playing(message):
+async def start_playing(message, start_time="00:00:00"):
   server_id = str(message.guild.id)
   queue = serverdb[server_id]['music_queue']
   if queue:
@@ -206,7 +208,13 @@ async def start_playing(message):
     title = queue[0]['title']
     duration = queue[0]['duration']
     voice_client = message.guild.voice_client
-    voice_client.play(discord.FFmpegPCMAudio(source=url), after=lambda e: after_song(message))
+    voice_client.play(
+      discord.FFmpegPCMAudio(
+        source=url,
+        before_options=f'-ss {start_time}'
+        ),
+      after=lambda e: after_song(message)
+      )
     await message.channel.send(f'**Now playing:** {title} | ***{duration}***')
   else:
     await message.channel.send(f'**Queue is empty**')
@@ -268,6 +276,35 @@ async def toggle_playback(message):
     else:
       await join(message)
       await start_playing(message)
+
+@client.event
+async def seek(message, start_time):
+  def isTimeFormat(string):
+    try:
+      time.strptime(string, '%H:%M:%S')
+      return True
+    except ValueError:
+      return False
+  server_id = str(message.guild.id)
+  channel_id = str(message.channel.id)
+  if not isTimeFormat(start_time):
+    await message.channel.send('Incorrect time format! Use HH:MM:SS')
+    return
+  if in_music_channel(server_id, channel_id):
+    server = message.guild
+    voice_client = server.voice_client
+    if voice_client:
+      queue = serverdb[server_id]['music_queue']
+      if queue:
+        serverdb[server_id]['music_queue'].insert(0, queue[0])
+        await disconnect(message)
+        await join(message)
+        await start_playing(message, start_time)
+        serverdb[server_id]['music_queue'].pop(0)
+      else:
+        await message.channel.send('Queue is empty')
+    else:
+      await message.channel.send('Nothing is playing')
 
 @client.event
 async def show_queue(message):
@@ -358,6 +395,8 @@ async def command_handler(prefix, message):
       await skip(message)
     elif command in ['p', 'з']:
       await toggle_playback(message)
+    elif command in ['seek', 'ыуул']:
+      await seek(message, argument)
     elif command in ['q', 'й', 'queue']:
       await show_queue(message)
     elif command in ['c', 'с', 'clear']:
