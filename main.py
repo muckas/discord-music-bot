@@ -10,7 +10,7 @@ import asyncio
 import db
 import constants
 
-VERSION = '0.3.2'
+VERSION = '0.4.0'
 NAME = 'Discord Bot'
 
 # Logger setup
@@ -46,7 +46,9 @@ try:
   if not TOKEN:
     log.error('Discord token is empty')
     sys.exit(2)
-  client = discord.Client()
+  intents = discord.Intents.default()
+  intents.message_content = True
+  client = discord.Client(intents = intents)
 except Exception as e:
   log.error((traceback.format_exc()))
 
